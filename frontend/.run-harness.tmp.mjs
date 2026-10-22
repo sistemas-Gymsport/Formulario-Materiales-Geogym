@@ -1,0 +1,15 @@
+import { Font, renderToBuffer } from '@react-pdf/renderer';
+import { createElement } from 'react';
+import fs from 'node:fs';
+import { RequestReceipt } from './.receipt-harness.tmp.mjs';
+const f = (p) => new URL(`./node_modules/@fontsource/${p}`, import.meta.url).pathname.replace(/^\/(\w:)/, '$1');
+Font.register({ family: 'Unbounded', fonts: [{ src: f('unbounded/files/unbounded-latin-700-normal.woff'), fontWeight: 700 }, { src: f('unbounded/files/unbounded-latin-800-normal.woff'), fontWeight: 800 }] });
+Font.register({ family: 'Manrope', fonts: [500, 700, 800].map((w) => ({ src: f(`manrope/files/manrope-latin-${w}-normal.woff`), fontWeight: w })) });
+Font.registerHyphenationCallback((w) => [w]);
+const logo = new URL('./public/assets/logo-pdf.jpg', import.meta.url).pathname.replace(/^\/(\w:)/, '$1');
+const big = process.argv[3]==='big'; const cats = (await import('../backend/prisma/catalog.js')).catalog.map(c=>({name:c.name, materials:c.materials})); const req0 = { folio: 'SOL-TEST-0001', requesterName: 'Prueba Node', branchName: 'Satélite', createdAt: new Date().toISOString(), itemCount: 2, categories: [{ name: 'Higiene personal', materials: ['Papel higiénico', 'Jabón para manos'] }], customMaterials: [] };
+const req = big ? { ...req0, itemCount: 50, categories: cats, customMaterials: ['Cinta canela','Pilas AA','Foco LED','Toallas desinfectantes'] } : req0;
+const t = Date.now();
+const buf = await renderToBuffer(createElement(RequestReceipt, { request: req, timeZone: 'America/Mexico_City', logoUrl: logo, generatedAt: new Date().toISOString() }));
+fs.writeFileSync(process.argv[2], buf);
+console.log('OK', buf.length, Date.now() - t, 'ms');

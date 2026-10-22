@@ -1,0 +1,216 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Admin {
+  id                String         @id @default(uuid()) @db.Uuid
+  username          String         @unique @db.VarChar(40)
+  passwordHash      String
+  isActive          Boolean        @default(true)
+  failedLoginCount  Int            @default(0)
+  lockedUntil       DateTime?
+  lastLoginAt       DateTime?
+  passwordChangedAt DateTime       @default(now())
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  sessions          AdminSession[]
+  monthlyCloses     MonthlyClose[]
+}
+
+model AdminSession {
+  id         String   @id @default(uuid()) @db.Uuid
+  adminId    String   @db.Uuid
+  tokenHash  String   @unique @db.VarChar(64)
+  csrfToken  String   @db.VarChar(64)
+  expiresAt  DateTime
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  userAgent  String?  @db.VarChar(300)
+  ip         String?  @db.VarChar(64)
+  admin      Admin    @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([adminId])
+  @@index([expiresAt])
+}
+
+model Branch {
+  id             Int       @id @default(autoincrement())
+  name           String    @db.VarChar(80)
+  normalizedName String    @unique @db.VarChar(80)
+  sortOrder      Int       @default(0)
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  requests       Request[]
+
+  @@index([isActive, sortOrder])
+}
+
+model Category {
+  id           Int           @id @default(autoincrement())
+  name         String        @db.VarChar(80)
+  slug         String        @unique @db.VarChar(90)
+  icon         String        @default("package") @db.VarChar(40)
+  sortOrder    Int           @default(0)
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  materials    Material[]
+  requestItems RequestItem[]
+
+  @@index([isActive, sortOrder])
+}
+
+model Material {
+  id             Int           @id @default(autoincrement())
+  categoryId     Int
+  name           String        @db.VarChar(80)
+  normalizedName String        @unique @db.VarChar(80)
+  sortOrder      Int           @default(0)
+  isActive       Boolean       @default(true)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  category       Category      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  requestItems   RequestItem[]
+
+  @@index([categoryId, sortOrder])
+  @@index([isActive])
+}
+
+model Request {
+  id                  String               @id @default(uuid()) @db.Uuid
+  folio               String               @unique @db.VarChar(24)
+  requesterName       String               @db.VarChar(100)
+  requesterNormalized String               @db.VarChar(100)
+  branchId            Int
+  branchNameSnapshot  String               @db.VarChar(80)
+  idempotencyKey      String               @unique @db.VarChar(64)
+  payloadHash         String               @db.VarChar(64)
+  itemCount           Int
+  createdAt           DateTime             @default(now())
+  branch              Branch               @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  items               RequestItem[]
+  notifications       NotificationOutbox[]
+
+  @@index([createdAt])
+  @@index([branchId, createdAt])
+  @@index([requesterNormalized])
+}
+
+model RequestItem {
+  id                   Int       @id @default(autoincrement())
+  requestId            String    @db.Uuid
+  materialId           Int?
+  categoryId           Int?
+  materialNameSnapshot String    @db.VarChar(80)
+  normalizedName       String    @db.VarChar(80)
+  categoryNameSnapshot String    @db.VarChar(80)
+  isCustom             Boolean   @default(false)
+  sortOrder            Int       @default(0)
+  request              Request   @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  material             Material? @relation(fields: [materialId], references: [id], onDelete: Restrict)
+  category             Category? @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  @@unique([requestId, normalizedName])
+  @@index([materialId])
+  @@index([categoryId])
+  @@index([isCustom, normalizedName])
+}
+
+model FolioCounter {
+  day   String @id @db.VarChar(8)
+  value Int    @default(0)
+}
+
+model FormSchedule {
+  id              Int      @id @default(1)
+  timezone        String   @default("America/Mexico_City") @db.VarChar(60)
+  enabled         Boolean  @default(true)
+  openingTime     String   @default("05:00") @db.VarChar(5)
+  closingTime     String   @default("17:00") @db.VarChar(5)
+  allowedWeekdays Int[]    @default([0, 2, 4, 6])
+  noticeTitle     String   @db.VarChar(120)
+  noticeIntro     String   @db.VarChar(800)
+  noticeOutro     String   @db.VarChar(400)
+  noticeButton    String   @db.VarChar(40)
+  closedTitle     String   @db.VarChar(120)
+  closedMessage   String   @db.VarChar(800)
+  closedOutro     String   @db.VarChar(400)
+  closedButton    String   @db.VarChar(40)
+  updatedAt       DateTime @updatedAt
+  updatedBy       String?  @db.VarChar(40)
+}
+
+model FormScheduleException {
+  id          Int      @id @default(autoincrement())
+  date        DateTime @unique @db.Date
+  allowed     Boolean
+  openingTime String?  @db.VarChar(5)
+  closingTime String?  @db.VarChar(5)
+  note        String?  @db.VarChar(120)
+  createdAt   DateTime @default(now())
+}
+
+model IntegrationSettings {
+  id                  Int       @id @default(1)
+  enabled             Boolean   @default(false)
+  webhookUrl          String?   @db.VarChar(500)
+  encryptedCredential String?
+  credentialHint      String?   @db.VarChar(12)
+  destinationPhone    String?   @db.VarChar(20)
+  authMode            String    @default("hmac") @db.VarChar(10)
+  heldPolicy          String    @default("ignore") @db.VarChar(10)
+  enabledAt           DateTime?
+  lastTestAt          DateTime?
+  lastTestOk          Boolean?
+  lastTestMessage     String?   @db.VarChar(300)
+  lastDeliveryAt      DateTime?
+  lastDeliveryOk      Boolean?
+  lastDeliveryMessage String?   @db.VarChar(300)
+  updatedAt           DateTime  @updatedAt
+}
+
+enum OutboxStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+  HELD
+  IGNORED
+}
+
+model NotificationOutbox {
+  id                  String       @id @default(uuid()) @db.Uuid
+  requestId           String       @db.Uuid
+  type                String       @db.VarChar(40)
+  status              OutboxStatus @default(PENDING)
+  attempts            Int          @default(0)
+  nextAttemptAt       DateTime     @default(now())
+  lockedAt            DateTime?
+  lastError           String?      @db.VarChar(500)
+  responseStatus      Int?
+  createdAt           DateTime     @default(now())
+  deliveredAt         DateTime?
+  providerStatus      String?      @db.VarChar(20)
+  providerConfirmedAt DateTime?
+  request             Request      @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@unique([requestId, type])
+  @@index([status, nextAttemptAt])
+}
+
+model MonthlyClose {
+  id         Int      @id @default(autoincrement())
+  year       Int
+  month      Int
+  closedAt   DateTime @default(now())
+  closedById String?  @db.Uuid
+  closedBy   Admin?   @relation(fields: [closedById], references: [id], onDelete: SetNull)
+
+  @@unique([year, month])
+}
